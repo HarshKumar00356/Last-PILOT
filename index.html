@@ -18,8 +18,9 @@ canvas { display:block; }
 #overlay .cta { font-size:12px; letter-spacing:6px; color:rgba(0,255,180,.8); animation:blink 1.8s ease-in-out infinite; }
 @keyframes blink { 0%,100%{opacity:.3} 50%{opacity:1} }
 #overlay.hide { display:none; }
+#overlay { cursor:pointer; }
 /* mobile */
-#jpad { position:fixed; left:24px; bottom:28px; width:90px; height:90px; border-radius:50%; border:1px solid rgba(255,255,255,.12); z-index:8; touch-action:none; }
+#jpad { position:fixed; left:24px; bottom:28px; width:90px; height:90px; border-radius:50%; border:1px solid rgba(255,255,255,.12); z-index:30; touch-action:none; }
 #jknob { width:36px; height:36px; border-radius:50%; background:rgba(0,180,255,.3); border:1px solid rgba(0,200,255,.5); position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); pointer-events:none; }
 #firebtn { position:fixed; right:28px; bottom:38px; width:70px; height:70px; border-radius:50%; border:1px solid rgba(0,200,255,.35); background:rgba(0,200,255,.1); color:rgba(0,200,255,.7); font-size:10px; letter-spacing:2px; display:flex; align-items:center; justify-content:center; z-index:8; touch-action:none; user-select:none; }
 </style>
@@ -40,9 +41,9 @@ canvas { display:block; }
   <div class="info">
     Arrow Keys / WASD — Move<br>
     Space — Shoot<br>
-    Destroy all enemies to advance
+    <span id="mobilehint">📱 Left side drag = Move · Right tap = Fire</span>
   </div>
-  <div class="cta" id="ctatxt">PRESS SPACE OR TAP TO BEGIN</div>
+  <div class="cta" id="ctatxt">TAP ANYWHERE OR PRESS SPACE</div>
 </div>
 
 <div id="jpad"><div id="jknob"></div></div>
@@ -51,7 +52,7 @@ canvas { display:block; }
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 
-// ── RENDERER ──
+// -- RENDERER --
 var canvas = document.getElementById('c');
 var renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
@@ -71,7 +72,7 @@ window.addEventListener('resize', function() {
   camera.updateProjectionMatrix();
 });
 
-// ── LIGHTS ──
+// -- LIGHTS --
 scene.add(new THREE.AmbientLight(0x112244, 1.5));
 var dlight = new THREE.DirectionalLight(0x4488ff, 2);
 dlight.position.set(5, 10, 5);
@@ -80,14 +81,14 @@ var rlight = new THREE.DirectionalLight(0xff3311, 0.6);
 rlight.position.set(-5, -3, -8);
 scene.add(rlight);
 
-// ── STARS ──
+// -- STARS --
 var starGeo = new THREE.BufferGeometry();
 var starPos = new Float32Array(3000);
 for (var i = 0; i < 3000; i++) starPos[i] = (Math.random() - 0.5) * 300;
 starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
 scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color:0xffffff, size:0.2 })));
 
-// ── BUILD SHIP ──
+// -- BUILD SHIP --
 function makeShip() {
   var g = new THREE.Group();
   var mat = new THREE.MeshStandardMaterial({ color:0x88bbee, metalness:0.9, roughness:0.1, emissive:0x001133, emissiveIntensity:0.3 });
@@ -123,7 +124,7 @@ function makeShip() {
   return g;
 }
 
-// ── BUILD ASTEROID ──
+// -- BUILD ASTEROID --
 var astGeos = [];
 for (var ai = 0; ai < 6; ai++) {
   var ag = new THREE.IcosahedronGeometry(1, 1);
@@ -149,7 +150,7 @@ function makeAsteroid(r, hard) {
   return m;
 }
 
-// ── BUILD UFO ──
+// -- BUILD UFO --
 function makeUFO(type) {
   var g = new THREE.Group();
   var cols = { normal:0x22bb44, fast:0xff4400, tank:0x8833ff, boss:0xff1100 };
@@ -185,7 +186,7 @@ function makeUFO(type) {
   return g;
 }
 
-// ── BULLET MESH ──
+// -- BULLET MESH --
 var bmat = new THREE.MeshStandardMaterial({ color:0x00ffff, emissive:0x00ffff, emissiveIntensity:5 });
 var bGeo = new THREE.CylinderGeometry(0.05, 0.05, 0.8, 5);
 function makeBullet() {
@@ -204,7 +205,7 @@ function makeEBullet() {
   return g;
 }
 
-// ── AUDIO ──
+// -- AUDIO --
 var AC = null;
 try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch(e) {}
 function beep(f, t, d, v) {
@@ -233,7 +234,7 @@ function boom(big) {
   } catch(e) {}
 }
 
-// ── GAME STATE ──
+// -- GAME STATE --
 var STATE = 'intro'; // intro, play, over
 var score = 0, lives = 3, level = 1, frame = 0;
 var shipX = 0, shipZ = 0, shipInv = 0, shootCD = 0;
@@ -241,7 +242,7 @@ var ship = null;
 var bullets = [], ebullets = [], enemies = [], particles = [];
 var keys = {}, joyX = 0, joyY = 0, tfire = false;
 
-// ── INPUT ──
+// -- INPUT --
 document.addEventListener('keydown', function(e) {
   keys[e.key] = true;
   if (AC && AC.state === 'suspended') AC.resume();
@@ -257,10 +258,64 @@ document.addEventListener('keyup', function(e) { keys[e.key] = false; });
 // joystick
 var jpad = document.getElementById('jpad');
 var jknob = document.getElementById('jknob');
-var jActive = false, jSX = 0, jSY = 0;
+var jActive = false, jSX = 0, jSY = 0, jTouchId = -1;
+
+// Full canvas touch for movement (left half = move, right half = fire)
+document.getElementById('c').addEventListener('touchstart', function(e) {
+  if (STATE === 'intro') { beginGame(); return; }
+  if (STATE === 'over') { restartGame(); return; }
+  if (AC && AC.state === 'suspended') AC.resume();
+  for (var i = 0; i < e.changedTouches.length; i++) {
+    var t = e.changedTouches[i];
+    if (t.clientX < window.innerWidth * 0.55) {
+      // left half = joystick
+      if (!jActive) {
+        jActive = true; jTouchId = t.identifier;
+        jSX = t.clientX; jSY = t.clientY;
+        jpad.style.left = (t.clientX - 45) + 'px';
+        jpad.style.bottom = (window.innerHeight - t.clientY - 45) + 'px';
+        jknob.style.transform = 'translate(-50%,-50%)';
+      }
+    } else {
+      // right half = shoot
+      tfire = true;
+      if (shootCD <= 0) shoot();
+    }
+  }
+  e.preventDefault();
+}, {passive:false});
+
+document.getElementById('c').addEventListener('touchmove', function(e) {
+  for (var i = 0; i < e.changedTouches.length; i++) {
+    var t = e.changedTouches[i];
+    if (t.identifier === jTouchId && jActive) {
+      var dx = t.clientX - jSX, dy = t.clientY - jSY;
+      var d = Math.hypot(dx, dy), mx = 50;
+      var cl = Math.min(d, mx), a = Math.atan2(dy, dx);
+      joyX = Math.cos(a)*(cl/mx); joyY = Math.sin(a)*(cl/mx);
+      jknob.style.transform = 'translate(calc(-50% + '+Math.cos(a)*cl+'px), calc(-50% + '+Math.sin(a)*cl+'px))';
+    }
+  }
+  e.preventDefault();
+}, {passive:false});
+
+document.getElementById('c').addEventListener('touchend', function(e) {
+  for (var i = 0; i < e.changedTouches.length; i++) {
+    var t = e.changedTouches[i];
+    if (t.identifier === jTouchId) {
+      jActive = false; joyX = 0; joyY = 0; jTouchId = -1;
+      jknob.style.transform = 'translate(-50%,-50%)';
+    } else {
+      tfire = false;
+    }
+  }
+}, {passive:true});
+
+// Keep original jpad listeners as fallback
 jpad.addEventListener('touchstart', function(e) {
   if (AC && AC.state === 'suspended') AC.resume();
-  jActive = true;
+  if (STATE !== 'play') return;
+  jActive = true; jTouchId = e.touches[0].identifier;
   var r = jpad.getBoundingClientRect();
   jSX = r.left + r.width/2; jSY = r.top + r.height/2;
   e.preventDefault();
@@ -269,7 +324,7 @@ jpad.addEventListener('touchmove', function(e) {
   if (!jActive) return;
   var t = e.touches[0];
   var dx = t.clientX - jSX, dy = t.clientY - jSY;
-  var d = Math.hypot(dx, dy), mx = 35;
+  var d = Math.hypot(dx, dy), mx = 38;
   var cl = Math.min(d, mx), a = Math.atan2(dy, dx);
   joyX = Math.cos(a)*(cl/mx); joyY = Math.sin(a)*(cl/mx);
   jknob.style.transform = 'translate(calc(-50% + '+Math.cos(a)*cl+'px), calc(-50% + '+Math.sin(a)*cl+'px))';
@@ -280,17 +335,32 @@ jpad.addEventListener('touchend', function() {
   jknob.style.transform = 'translate(-50%,-50%)';
 });
 
+// tap overlay to start
+var overlay = document.getElementById('overlay');
+overlay.addEventListener('touchstart', function(e) {
+  if (AC && AC.state === 'suspended') AC.resume();
+  if (STATE === 'intro') beginGame();
+  else if (STATE === 'over') restartGame();
+  e.preventDefault();
+}, {passive:false});
+overlay.addEventListener('click', function() {
+  if (AC && AC.state === 'suspended') AC.resume();
+  if (STATE === 'intro') beginGame();
+  else if (STATE === 'over') restartGame();
+});
+
 // fire button
 var firebtn = document.getElementById('firebtn');
-firebtn.addEventListener('touchstart', function() {
+firebtn.addEventListener('touchstart', function(e) {
   if (AC && AC.state === 'suspended') AC.resume();
   tfire = true;
   if (STATE === 'intro') beginGame();
   else if (STATE === 'over') restartGame();
-}, {passive:true});
+  e.preventDefault();
+}, {passive:false});
 firebtn.addEventListener('touchend', function() { tfire = false; });
 
-// ── BEGIN / RESTART ──
+// -- BEGIN / RESTART --
 function beginGame() {
   document.getElementById('overlay').classList.add('hide');
   if (!ship) { ship = makeShip(); scene.add(ship); }
@@ -319,7 +389,7 @@ function clearAll() {
   bullets = []; ebullets = []; enemies = []; particles = [];
 }
 
-// ── SPAWN WAVE ──
+// -- SPAWN WAVE --
 function spawnWave() {
   clearAll();
   var isBoss = (level % 5 === 0);
@@ -357,7 +427,7 @@ function spawnWave() {
   }
 }
 
-// ── SHOOT ──
+// -- SHOOT --
 function shoot() {
   if (shootCD > 0 || !ship) return;
   shootCD = 10;
@@ -375,7 +445,7 @@ function spawnEBullet(pos, dx, dz) {
   ebullets.push({ mesh:m, dx:dx, dz:dz });
 }
 
-// ── PARTICLES ──
+// -- PARTICLES --
 var pmat = new THREE.MeshBasicMaterial({ color:0xff8800, transparent:true });
 var pgeo = new THREE.SphereGeometry(0.1, 4, 4);
 function spawnParticles(pos, col, n) {
@@ -388,7 +458,7 @@ function spawnParticles(pos, col, n) {
   }
 }
 
-// ── KILL ENEMY ──
+// -- KILL ENEMY --
 function killEnemy(e, idx) {
   spawnParticles(e.mesh.position, e.mesh.userData.col||0xff8800, 12);
   boom(e.type==='boss');
@@ -398,7 +468,7 @@ function killEnemy(e, idx) {
   updateHUD();
 }
 
-// ── DAMAGE ──
+// -- DAMAGE --
 function hitShip() {
   if (shipInv > 0) return;
   shipInv = 90; lives--;
@@ -418,7 +488,7 @@ function gameOver() {
   ov.classList.remove('hide');
 }
 
-// ── HUD ──
+// -- HUD --
 var liveEmojis = ['','❤️','❤️❤️','❤️❤️❤️'];
 function updateHUD() {
   document.getElementById('score').textContent = score.toLocaleString();
@@ -432,7 +502,7 @@ function showMsg(txt) {
   clearTimeout(msgTO);
 }
 
-// ── MAIN LOOP ──
+// -- MAIN LOOP --
 function loop() {
   requestAnimationFrame(loop);
   frame++;
