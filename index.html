@@ -11,14 +11,29 @@ canvas { display:block; }
 #score { position:absolute; top:20px; left:50%; transform:translateX(-50%); font-size:32px; font-weight:100; color:#fff; letter-spacing:4px; }
 #level { position:absolute; top:58px; left:50%; transform:translateX(-50%); font-size:11px; color:rgba(255,255,255,.3); letter-spacing:6px; }
 #lives { position:absolute; top:22px; right:20px; font-size:18px; }
-#overlay { position:fixed; inset:0; z-index:10; background:rgba(0,0,0,.85); display:flex; flex-direction:column; align-items:center; justify-content:center; color:#fff; text-align:center; }
-#overlay h1 { font-size:clamp(36px,8vw,72px); font-weight:100; letter-spacing:12px; margin-bottom:8px; }
-#overlay p { font-size:13px; color:rgba(255,255,255,.4); letter-spacing:5px; margin-bottom:40px; }
-#overlay .info { font-size:14px; color:rgba(255,255,255,.55); line-height:2.4; margin-bottom:36px; }
-#overlay .cta { font-size:12px; letter-spacing:6px; color:rgba(0,255,180,.8); animation:blink 1.8s ease-in-out infinite; }
-@keyframes blink { 0%,100%{opacity:.3} 50%{opacity:1} }
+#overlay { position:fixed; inset:0; z-index:10; background:#000; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; cursor:pointer; }
 #overlay.hide { display:none; }
-#overlay { cursor:pointer; }
+
+#ov-title { font-size:clamp(42px,10vw,88px); font-weight:100; letter-spacing:16px; color:#fff; text-transform:uppercase; opacity:0; animation:dissolve 1.8s ease-out 0.3s forwards; }
+#ov-alien  { font-size:clamp(48px,12vw,96px); opacity:0; margin:clamp(18px,4vw,36px) 0; animation:risein 1s ease-out 2.4s forwards, alienFloat 3s ease-in-out 3.4s infinite; }
+
+@keyframes alienFloat {
+  0%,100% { transform:translateY(0px) scale(1);    }
+  50%     { transform:translateY(-18px) scale(1.08); }
+}
+#ov-hint   { font-size:clamp(9px,1.8vw,12px); color:rgba(255,255,255,.32); letter-spacing:3px; opacity:0; margin-bottom:clamp(14px,3vw,24px); animation:risein .8s ease-out 3.2s forwards; }
+#ov-cta    { font-size:clamp(10px,2vw,13px); letter-spacing:4px; color:rgba(0,255,180,.8); opacity:0; animation:risein .8s ease-out 3.8s forwards, blink 2s ease-in-out 4.6s infinite; }
+
+@keyframes dissolve {
+  0%   { opacity:0; filter:blur(18px); letter-spacing:28px; }
+  60%  { opacity:1; filter:blur(0px); }
+  100% { opacity:1; filter:blur(0px); letter-spacing:16px; }
+}
+@keyframes risein {
+  from { opacity:0; transform:translateY(12px); }
+  to   { opacity:1; transform:translateY(0); }
+}
+@keyframes blink { 0%,100%{opacity:.3} 50%{opacity:1} }
 /* mobile */
 #jpad { position:fixed; left:24px; bottom:28px; width:90px; height:90px; border-radius:50%; border:1px solid rgba(255,255,255,.12); z-index:30; touch-action:none; }
 #jknob { width:36px; height:36px; border-radius:50%; background:rgba(0,180,255,.3); border:1px solid rgba(0,200,255,.5); position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); pointer-events:none; }
@@ -36,14 +51,10 @@ canvas { display:block; }
 </div>
 
 <div id="overlay">
-  <h1>LAST PILOT</h1>
-  <p>EARTH'S FINAL DEFENSE</p>
-  <div class="info">
-    Arrow Keys / WASD — Move<br>
-    Space — Shoot<br>
-    <span id="mobilehint">📱 Left side drag = Move · Right tap = Fire</span>
-  </div>
-  <div class="cta" id="ctatxt">TAP ANYWHERE OR PRESS SPACE</div>
+  <div id="ov-title">Last Pilot</div>
+  <div id="ov-alien">👾</div>
+  <div id="ov-hint">Space to shoot · Arrow keys to move</div>
+  <div id="ov-cta">Tap anywhere or press Space</div>
 </div>
 
 <div id="jpad"><div id="jknob"></div></div>
@@ -81,12 +92,40 @@ var rlight = new THREE.DirectionalLight(0xff3311, 0.6);
 rlight.position.set(-5, -3, -8);
 scene.add(rlight);
 
-// -- STARS --
+// -- STARS (warp speed) --
+// Camera is at z=22 looking toward z=0 and beyond.
+// Stars should travel from far away (z = -200) toward and past camera (z = 40).
+var STAR_COUNT = 800;
+var starPositions = new Float32Array(STAR_COUNT * 3);
+var starSpeeds    = new Float32Array(STAR_COUNT);
+
+function resetStar(i) {
+  starPositions[i*3]   = (Math.random() - 0.5) * 160;  // x spread
+  starPositions[i*3+1] = (Math.random() - 0.5) * 160;  // y spread
+  starPositions[i*3+2] = -200 - Math.random() * 80;     // start far behind scene
+  starSpeeds[i] = 2.0 + Math.random() * 4.0;
+}
+
+for (var si = 0; si < STAR_COUNT; si++) {
+  resetStar(si);
+  // pre-scatter z so they fill the whole tunnel on first frame
+  starPositions[si*3+2] = -200 + Math.random() * 240;
+}
+
 var starGeo = new THREE.BufferGeometry();
-var starPos = new Float32Array(3000);
-for (var i = 0; i < 3000; i++) starPos[i] = (Math.random() - 0.5) * 300;
-starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
-scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color:0xffffff, size:0.2 })));
+starGeo.setAttribute('position', new THREE.BufferAttribute(starPositions, 3));
+var starMat = new THREE.PointsMaterial({ color:0xffffff, size:0.5, sizeAttenuation:true });
+var starField = new THREE.Points(starGeo, starMat);
+scene.add(starField);
+
+function updateStars() {
+  var pos = starGeo.attributes.position.array;
+  for (var si = 0; si < STAR_COUNT; si++) {
+    pos[si*3+2] += starSpeeds[si];
+    if (pos[si*3+2] > 40) resetStar(si);
+  }
+  starGeo.attributes.position.needsUpdate = true;
+}
 
 // -- BUILD SHIP --
 function makeShip() {
@@ -481,10 +520,17 @@ function hitShip() {
 function gameOver() {
   STATE = 'over';
   var ov = document.getElementById('overlay');
-  ov.querySelector('h1').textContent = 'GAME OVER';
-  ov.querySelector('p').textContent = 'SCORE: ' + score.toLocaleString();
-  ov.querySelector('.info').textContent = 'Level reached: ' + level;
-  ov.querySelector('#ctatxt').textContent = 'TAP OR SPACE TO RETRY';
+  document.getElementById('ov-title').textContent = 'Game Over';
+  document.getElementById('ov-title').style.animation = 'none';
+  document.getElementById('ov-title').style.opacity = '1';
+  document.getElementById('ov-alien').textContent = '💀';
+  document.getElementById('ov-alien').style.animation = 'none';
+  document.getElementById('ov-alien').style.opacity = '1';
+  document.getElementById('ov-hint').textContent = 'Score ' + score.toLocaleString() + '  ·  Level ' + level;
+  document.getElementById('ov-hint').style.animation = 'none';
+  document.getElementById('ov-hint').style.opacity = '1';
+  document.getElementById('ov-cta').textContent = 'Tap or Space to retry';
+  document.getElementById('ov-cta').style.opacity = '1';
   ov.classList.remove('hide');
 }
 
@@ -506,6 +552,8 @@ function showMsg(txt) {
 function loop() {
   requestAnimationFrame(loop);
   frame++;
+
+  updateStars();
 
   if (STATE !== 'play') { renderer.render(scene, camera); return; }
 
