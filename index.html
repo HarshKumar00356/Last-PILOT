@@ -103,7 +103,7 @@ function resetStar(i) {
   starPositions[i*3]   = (Math.random() - 0.5) * 160;  // x spread
   starPositions[i*3+1] = (Math.random() - 0.5) * 160;  // y spread
   starPositions[i*3+2] = -200 - Math.random() * 80;     // start far behind scene
-  starSpeeds[i] = 2.0 + Math.random() * 4.0;
+  starSpeeds[i] = 0.4 + Math.random() * 0.6;
 }
 
 for (var si = 0; si < STAR_COUNT; si++) {
@@ -114,7 +114,18 @@ for (var si = 0; si < STAR_COUNT; si++) {
 
 var starGeo = new THREE.BufferGeometry();
 starGeo.setAttribute('position', new THREE.BufferAttribute(starPositions, 3));
-var starMat = new THREE.PointsMaterial({ color:0xffffff, size:0.5, sizeAttenuation:true });
+// round dot texture for stars
+var starCanvas = document.createElement('canvas');
+starCanvas.width = 16; starCanvas.height = 16;
+var starCtx = starCanvas.getContext('2d');
+var grad = starCtx.createRadialGradient(8,8,0,8,8,8);
+grad.addColorStop(0,'rgba(255,255,255,1)');
+grad.addColorStop(0.4,'rgba(255,255,255,0.8)');
+grad.addColorStop(1,'rgba(255,255,255,0)');
+starCtx.fillStyle = grad;
+starCtx.fillRect(0,0,16,16);
+var starTex = new THREE.CanvasTexture(starCanvas);
+var starMat = new THREE.PointsMaterial({ color:0xffffff, size:0.9, sizeAttenuation:true, map:starTex, transparent:true, alphaTest:0.01 });
 var starField = new THREE.Points(starGeo, starMat);
 scene.add(starField);
 
@@ -448,7 +459,7 @@ function spawnWave() {
       m.position.set((Math.random()-0.5)*26, 0, -38 - i*6);
       scene.add(m);
       enemies.push({ mesh:m, hp:hard?3:1, type:'asteroid', r:r,
-        vx:(Math.random()-0.5)*0.06, vz:0.05+Math.random()*level*0.01,
+        vx:(Math.random()-0.5)*0.06, vz:0.09+Math.random()*level*0.015,
         rx:Math.random()*0.02, ry:Math.random()*0.02 });
     }
     // UFOs from level 2
@@ -628,6 +639,7 @@ function loop() {
       en.mesh.rotation.y += 0.04;
       en.mesh.position.y = Math.sin(en.phase) * 0.3;
       en.mesh.position.x += en.dx;
+      en.mesh.position.z += 0.04 + level * 0.008;
       if (en.mesh.position.x > 13 || en.mesh.position.x < -13) en.dx *= -1;
       if (en.mesh.position.z > 16) { scene.remove(en.mesh); enemies.splice(ei,1); continue; }
       // shoot at player
