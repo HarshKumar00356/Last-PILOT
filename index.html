@@ -2,6 +2,7 @@
 <html>
 <head>
 <title>Last Pilot</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
@@ -34,6 +35,32 @@ canvas { display:block; }
   to   { opacity:1; transform:translateY(0); }
 }
 @keyframes blink { 0%,100%{opacity:.3} 50%{opacity:1} }
+
+/* alias screen */
+#alias-screen { position:fixed; inset:0; z-index:15; background:#000; display:none; flex-direction:column; align-items:center; justify-content:center; text-align:center; }
+#alias-screen.show { display:flex; }
+#alias-title { font-family:'Orbitron',Arial,sans-serif; font-size:clamp(13px,3vw,20px); font-weight:700; letter-spacing:8px; color:rgba(255,255,255,.35); text-transform:uppercase; margin-bottom:clamp(24px,5vw,44px); opacity:0; animation:risein .8s ease-out .3s forwards; }
+#alias-input { background:transparent; border:none; border-bottom:1px solid rgba(255,255,255,.25); color:#fff; font-family:'Orbitron',Arial,sans-serif; font-size:clamp(28px,7vw,58px); font-weight:700; letter-spacing:10px; text-align:center; outline:none; width:min(480px,85vw); padding:8px 0; caret-color:rgba(0,255,180,.8); text-transform:uppercase; opacity:0; animation:risein .8s ease-out .7s forwards; }
+#alias-input::placeholder { color:rgba(255,255,255,.12); }
+#alias-hint { font-size:clamp(9px,1.8vw,11px); letter-spacing:5px; color:rgba(255,255,255,.2); margin-top:clamp(16px,3vw,28px); text-transform:uppercase; opacity:0; animation:blink 2s ease-in-out 1.4s infinite; }
+
+/* leaderboard */
+#leaderboard { position:fixed; inset:0; z-index:12; display:none; flex-direction:column; align-items:center; justify-content:flex-start; padding-top:clamp(12px,3vh,32px); overflow-y:auto; background:transparent; pointer-events:none; }
+#leaderboard.show { display:flex; }
+#lb-title { font-family:'Orbitron',Arial,sans-serif; font-size:clamp(10px,2vw,13px); font-weight:700; letter-spacing:8px; color:rgba(255,255,255,.22); text-transform:uppercase; margin-bottom:clamp(8px,1.5vh,16px); opacity:0; animation:risein .6s ease-out .8s forwards; }
+#lb-list { width:min(420px,88vw); display:flex; flex-direction:column; gap:5px; }
+.lb-row { display:flex; align-items:center; gap:10px; padding:7px 12px; border-radius:8px; background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.06); opacity:0; transform:translateY(8px); transition:opacity .4s, transform .4s; }
+.lb-row.visible { opacity:1; transform:translateY(0); }
+.lb-row.is-me { background:rgba(0,255,180,.07); border-color:rgba(0,255,180,.18); }
+.lb-rank { font-family:'Orbitron',Arial,sans-serif; font-size:10px; color:rgba(255,255,255,.25); width:18px; text-align:right; flex-shrink:0; }
+.lb-rank.gold   { color:#ffd700; }
+.lb-rank.silver { color:#c0c0c0; }
+.lb-rank.bronze { color:#cd7f32; }
+.lb-avatar { font-size:20px; flex-shrink:0; }
+.lb-name { font-family:'Orbitron',Arial,sans-serif; font-size:clamp(9px,2vw,12px); font-weight:700; color:#fff; letter-spacing:2px; text-transform:uppercase; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.lb-score { font-family:'Orbitron',Arial,sans-serif; font-size:clamp(10px,2vw,13px); font-weight:400; color:rgba(0,255,180,.8); letter-spacing:2px; flex-shrink:0; }
+.lb-level { font-size:9px; color:rgba(255,255,255,.2); letter-spacing:3px; flex-shrink:0; }
+
 /* mobile */
 #jpad { position:fixed; left:24px; bottom:28px; width:90px; height:90px; border-radius:50%; border:1px solid rgba(255,255,255,.12); z-index:30; touch-action:none; }
 #jknob { width:36px; height:36px; border-radius:50%; background:rgba(0,180,255,.3); border:1px solid rgba(0,200,255,.5); position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); pointer-events:none; }
@@ -57,6 +84,17 @@ canvas { display:block; }
   <div id="ov-cta">Tap anywhere or press Space</div>
 </div>
 
+
+<div id="alias-screen">
+  <div id="alias-title">Enter your alias, pilot</div>
+  <input id="alias-input" type="text" maxlength="12" placeholder="CALLSIGN" autocomplete="off" spellcheck="false" />
+  <div id="alias-hint">Press Enter to launch</div>
+</div>
+
+<div id="leaderboard">
+  <div id="lb-title">Hall of Legends</div>
+  <div id="lb-list"></div>
+</div>
 <div id="jpad"><div id="jknob"></div></div>
 <div id="firebtn">FIRE</div>
 
@@ -412,7 +450,10 @@ firebtn.addEventListener('touchend', function() { tfire = false; });
 
 // -- BEGIN / RESTART --
 function beginGame() {
-  document.getElementById('overlay').classList.add('hide');
+  if (!PLAYER_ALIAS) { showAliasScreen(); } else { actuallyBeginGame(); }
+}
+
+function actuallyBeginGame() {
   if (!ship) { ship = makeShip(); scene.add(ship); }
   ship.position.set(0, 0, 8);
   STATE = 'play';
@@ -420,6 +461,7 @@ function beginGame() {
 }
 
 function restartGame() {
+  hideLeaderboard();
   document.getElementById('overlay').classList.add('hide');
   clearAll();
   score = 0; lives = 3; level = 1; frame = 0;
@@ -543,6 +585,8 @@ function gameOver() {
   document.getElementById('ov-cta').textContent = 'Tap or Space to retry';
   document.getElementById('ov-cta').style.opacity = '1';
   ov.classList.remove('hide');
+  saveAndShowLeaderboard();
+  showLeaderboard();
 }
 
 // -- HUD --
@@ -715,6 +759,94 @@ function loop() {
 
 updateHUD();
 loop();
+
+// ── ALIAS + LEADERBOARD ──
+var PLAYER_ALIAS = '';
+var PLAYER_AVATAR = '';
+var AVATARS = ['👽','🛸','🤖','👾','🦾','🧬','🔭','⚡','🌌','💫','🪐','☄️','🌠','🎯','🧿'];
+
+function pickAvatar(name) {
+  var idx = 0;
+  for (var i = 0; i < name.length; i++) idx += name.charCodeAt(i);
+  return AVATARS[idx % AVATARS.length];
+}
+
+var aliasScreen = document.getElementById('alias-screen');
+var aliasInput  = document.getElementById('alias-input');
+
+function showAliasScreen() {
+  var ov = document.getElementById('overlay');
+  ov.style.transition = 'opacity .5s';
+  ov.style.opacity = '0';
+  setTimeout(function() {
+    ov.classList.add('hide');
+    ov.style.opacity = '';
+    ov.style.transition = '';
+    aliasScreen.classList.add('show');
+    setTimeout(function() { try { aliasInput.focus(); } catch(e){} }, 900);
+  }, 500);
+}
+
+aliasInput.addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') {
+    var raw = aliasInput.value.trim();
+    if (!raw) raw = 'PILOT';
+    PLAYER_ALIAS  = raw.substring(0, 12).toUpperCase();
+    PLAYER_AVATAR = pickAvatar(PLAYER_ALIAS);
+    aliasScreen.style.transition = 'opacity .6s';
+    aliasScreen.style.opacity = '0';
+    setTimeout(function() {
+      aliasScreen.classList.remove('show');
+      aliasScreen.style.opacity = '';
+      aliasScreen.style.transition = '';
+      actuallyBeginGame();
+    }, 600);
+    e.preventDefault();
+  }
+});
+
+async function saveAndShowLeaderboard() {
+  try {
+    var key = 'lastpilot-lb';
+    var existing = [];
+    try {
+      var res = await window.storage.get(key, true);
+      if (res && res.value) existing = JSON.parse(res.value);
+    } catch(e) {}
+    existing.push({ name: PLAYER_ALIAS, avatar: PLAYER_AVATAR, score: score, level: level, ts: Date.now() });
+    existing.sort(function(a,b){ return b.score - a.score; });
+    existing = existing.slice(0, 20);
+    try { await window.storage.set(key, JSON.stringify(existing), true); } catch(e) {}
+    renderLeaderboard(existing);
+  } catch(e) { console.log('LB error', e); }
+}
+
+function renderLeaderboard(entries) {
+  var lb = document.getElementById('leaderboard');
+  var list = document.getElementById('lb-list');
+  list.innerHTML = '';
+  lb.classList.add('show');
+  entries.forEach(function(entry, i) {
+    var row = document.createElement('div');
+    var rankCls = i===0?' gold':i===1?' silver':i===2?' bronze':'';
+    var isMe = (entry.name === PLAYER_ALIAS && entry.score === score);
+    row.className = 'lb-row' + (isMe?' is-me':'');
+    row.innerHTML =
+      '<span class="lb-rank'+rankCls+'">'+(i+1)+'</span>' +
+      '<span class="lb-avatar">'+entry.avatar+'</span>' +
+      '<span class="lb-name">'+entry.name+'</span>' +
+      '<span class="lb-level">LV'+entry.level+'</span>' +
+      '<span class="lb-score">'+entry.score.toLocaleString()+'</span>';
+    list.appendChild(row);
+    setTimeout(function(r){ return function(){ r.classList.add('visible'); }; }(row), 900 + i*90);
+  });
+}
+
+function hideLeaderboard() {
+  document.getElementById('leaderboard').classList.remove('show');
+  document.getElementById('lb-list').innerHTML = '';
+}
+
 </script>
 </body>
 </html>
