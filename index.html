@@ -45,7 +45,7 @@ canvas { display:block; }
 #alias-hint { font-size:clamp(9px,1.8vw,11px); letter-spacing:5px; color:rgba(255,255,255,.2); margin-top:clamp(16px,3vw,28px); text-transform:uppercase; opacity:0; animation:blink 2s ease-in-out 1.4s infinite; }
 
 /* leaderboard */
-#leaderboard { position:fixed; inset:0; z-index:12; display:none; flex-direction:column; align-items:center; justify-content:flex-start; padding-top:clamp(12px,3vh,32px); overflow-y:auto; background:transparent; pointer-events:none; }
+#leaderboard { position:fixed; left:50%; transform:translateX(-50%); bottom:0; top:auto; width:min(440px,92vw); z-index:12; display:none; flex-direction:column; align-items:center; padding:16px 0 24px; overflow-y:auto; max-height:52vh; background:linear-gradient(to bottom, transparent, rgba(0,0,0,.92) 18%); pointer-events:none; }
 #leaderboard.show { display:flex; }
 #lb-title { font-family:'Orbitron',Arial,sans-serif; font-size:clamp(10px,2vw,13px); font-weight:700; letter-spacing:8px; color:rgba(255,255,255,.22); text-transform:uppercase; margin-bottom:clamp(8px,1.5vh,16px); opacity:0; animation:risein .6s ease-out .8s forwards; }
 #lb-list { width:min(420px,88vw); display:flex; flex-direction:column; gap:5px; }
@@ -783,6 +783,7 @@ function showAliasScreen() {
     ov.style.opacity = '';
     ov.style.transition = '';
     aliasScreen.classList.add('show');
+    peekLeaderboard();
     setTimeout(function() { try { aliasInput.focus(); } catch(e){} }, 900);
   }, 500);
 }
@@ -799,6 +800,7 @@ aliasInput.addEventListener('keydown', function(e) {
       aliasScreen.classList.remove('show');
       aliasScreen.style.opacity = '';
       aliasScreen.style.transition = '';
+      hideLeaderboard();
       actuallyBeginGame();
     }, 600);
     e.preventDefault();
@@ -813,32 +815,71 @@ async function saveAndShowLeaderboard() {
       var res = await window.storage.get(key, true);
       if (res && res.value) existing = JSON.parse(res.value);
     } catch(e) {}
-    existing.push({ name: PLAYER_ALIAS, avatar: PLAYER_AVATAR, score: score, level: level, ts: Date.now() });
+
+    // Keep only best score per alias — update if this run beats their record
+    var found = false;
+    for (var i = 0; i < existing.length; i++) {
+      if (existing[i].name === PLAYER_ALIAS) {
+        if (score > existing[i].score) {
+          existing[i].score  = score;
+          existing[i].level  = level;
+          existing[i].avatar = PLAYER_AVATAR;
+          existing[i].ts     = Date.now();
+        }
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      existing.push({ name:PLAYER_ALIAS, avatar:PLAYER_AVATAR, score:score, level:level, ts:Date.now() });
+    }
+
+    // Sort by score descending, keep top 50
     existing.sort(function(a,b){ return b.score - a.score; });
-    existing = existing.slice(0, 20);
+    existing = existing.slice(0, 50);
+
     try { await window.storage.set(key, JSON.stringify(existing), true); } catch(e) {}
     renderLeaderboard(existing);
   } catch(e) { console.log('LB error', e); }
 }
 
+// Peek — load leaderboard without saving (shown on alias screen)
+async function peekLeaderboard() {
+  try {
+    var key = 'lastpilot-lb';
+    var res = await window.storage.get(key, true);
+    if (res && res.value) {
+      var entries = JSON.parse(res.value);
+      if (entries.length) renderLeaderboard(entries);
+    }
+  } catch(e) {}
+}
+
 function renderLeaderboard(entries) {
-  var lb = document.getElementById('leaderboard');
+  var lb   = document.getElementById('leaderboard');
   var list = document.getElementById('lb-list');
   list.innerHTML = '';
   lb.classList.add('show');
+  var myRank = -1;
+  entries.forEach(function(e, i){ if(e.name===PLAYER_ALIAS) myRank=i; });
+
   entries.forEach(function(entry, i) {
     var row = document.createElement('div');
     var rankCls = i===0?' gold':i===1?' silver':i===2?' bronze':'';
-    var isMe = (entry.name === PLAYER_ALIAS && entry.score === score);
-    row.className = 'lb-row' + (isMe?' is-me':'');
+    var isMe    = (entry.name === PLAYER_ALIAS);
+    row.className = 'lb-row' + (isMe ? ' is-me' : '');
     row.innerHTML =
       '<span class="lb-rank'+rankCls+'">'+(i+1)+'</span>' +
       '<span class="lb-avatar">'+entry.avatar+'</span>' +
-      '<span class="lb-name">'+entry.name+'</span>' +
+      '<span class="lb-name">'+entry.name+(isMe?' ◀':'')+'</span>' +
       '<span class="lb-level">LV'+entry.level+'</span>' +
       '<span class="lb-score">'+entry.score.toLocaleString()+'</span>';
     list.appendChild(row);
-    setTimeout(function(r){ return function(){ r.classList.add('visible'); }; }(row), 900 + i*90);
+    // stagger rows, scroll your own row into view
+    setTimeout(function(r, me){ return function(){
+      r.classList.add('visible');
+      if(me) r.scrollIntoView({ behavior:'smooth', block:'nearest' });
+    }; }(row, isMe), 900 + i*80);
   });
 }
 
